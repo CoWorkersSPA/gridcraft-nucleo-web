@@ -1,0 +1,6 @@
+# El gridcraft de partida: el núcleo depende de sus crates (gridcraft-engine) por este commit exacto, sin parchearlos. Para subir de
+# versión: cambiar COMMIT (y `rev` en crates/web-core/Cargo.toml), comprobar que compila y publicar una etiqueta nueva.
+REPO=https://github.com/storytold/gridcraft.git
+COMMIT=f86aec12dabc744b5f75e1033f87bfe685e78481
+# La versión de gridcraft de ese commit (workspace.package.version); la etiqueta de publicación es v<VERSION>-<n>.
+VERSION=0.12.1
