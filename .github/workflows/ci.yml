@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   construir:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
       contents: write # solo lo usa el paso de publicar, con etiqueta
