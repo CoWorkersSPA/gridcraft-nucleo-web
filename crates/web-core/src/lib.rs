@@ -62,6 +62,7 @@ fn estilo(wb: &gridcraft_engine::model::Workbook, id: StyleId) -> Json {
         "v": v,
         "wrap": s.align.wrap,
         "indent": s.align.indent,
+        "nf": s.num_fmt.as_str(),
         "bd": [borde(&s.borders.left, wb), borde(&s.borders.right, wb), borde(&s.borders.top, wb), borde(&s.borders.bottom, wb)],
     })
 }

@@ -48,6 +48,10 @@ run("home.alignCenter");
 s = estado();
 assert.equal(s.style.b, true, "negrita");
 assert.equal(s.style.h, "center");
+assert.equal(s.style.nf, "General", "formato numérico");
+run("home.percent");
+assert.equal(estado().style.nf, "0%");
+run("edit.undo");
 
 // Deshacer y rehacer.
 run("edit.undo");
