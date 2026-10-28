@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   construir:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 40
     permissions:
       contents: write # solo lo usa el paso de publicar, con etiqueta
@@ -63,7 +63,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # El runner propio no trae `gh`: se publica con la API (curl).
           sum="$(cut -d' ' -f1 salida/*.tar.gz.sha256)"
-          gh release create "$GITHUB_REF_NAME" salida/*.tar.gz salida/*.tar.gz.sha256 \
-            --title "Núcleo web ${GITHUB_REF_NAME#v}" \
-            --notes "SHA-256 del paquete: \`$sum\`. Para usarlo en bff, fijar esta versión y esta suma en apps/gridcraft/nucleo.json."
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          cuerpo="$(jq -n --arg tag "$GITHUB_REF_NAME" --arg nombre "Núcleo web ${GITHUB_REF_NAME#v}" \
+            --arg notas "SHA-256 del paquete: \`$sum\`. Para usarlo en bff, fijar esta versión y esta suma en apps/gridcraft/nucleo.json." \
+            '{tag_name: $tag, name: $nombre, body: $notas}')"
+          id="$(curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$api/releases" -d "$cuerpo" | jq -r .id)"
+          for f in salida/*.tar.gz salida/*.tar.gz.sha256; do
+            curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/octet-stream" \
+              --data-binary "@$f" "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$id/assets?name=$(basename "$f")" >/dev/null
+          done
