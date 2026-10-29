@@ -5,7 +5,7 @@
 #![forbid(unsafe_code)]
 
 use gridcraft_engine::core::{CellRef, RangeRef, Value};
-use gridcraft_engine::model::{BorderLine, BorderStyle, Color, HAlign, StyleId, VAlign, Visibility};
+use gridcraft_engine::model::{BorderLine, BorderStyle, Color, HAlign, PatternType, StyleId, Underline, VAlign, Visibility, Sheet, Workbook};
 use gridcraft_engine::{DocState, Session, Trust, display, io};
 use serde_json::{Value as Json, json};
 use wasm_bindgen::prelude::*;
@@ -16,15 +16,19 @@ pub struct Hoja {
     sesion: Session,
 }
 
+fn rango(r: &RangeRef) -> Json {
+    json!([r.start.row, r.start.col, r.end.row, r.end.col])
+}
+
 fn error(e: impl ToString) -> JsError {
     JsError::new(&e.to_string())
 }
 
-fn hex(c: &Color, wb: &gridcraft_engine::model::Workbook) -> Option<String> {
+fn hex(c: &Color, wb: &Workbook) -> Option<String> {
     c.hex(&wb.theme)
 }
 
-fn borde(l: &BorderLine, wb: &gridcraft_engine::model::Workbook) -> Json {
+fn borde(l: &BorderLine, wb: &Workbook) -> Json {
     if l.style == BorderStyle::None {
         return Json::Null;
     }
@@ -36,7 +40,7 @@ fn borde(l: &BorderLine, wb: &gridcraft_engine::model::Workbook) -> Json {
     json!([grosor, hex(&l.color, wb).unwrap_or_else(|| "#000000".into())])
 }
 
-fn estilo(wb: &gridcraft_engine::model::Workbook, id: StyleId) -> Json {
+fn estilo(wb: &Workbook, id: StyleId) -> Json {
     let s = wb.styles.get(id);
     let h = match s.align.h {
         HAlign::Left | HAlign::Fill | HAlign::Justify | HAlign::Distributed => "left",
@@ -54,10 +58,10 @@ fn estilo(wb: &gridcraft_engine::model::Workbook, id: StyleId) -> Json {
         "size": s.font.size,
         "b": s.font.bold,
         "i": s.font.italic,
-        "u": s.font.underline != gridcraft_engine::model::Underline::None,
+        "u": s.font.underline != Underline::None,
         "s": s.font.strike,
         "color": hex(&s.font.color, wb),
-        "fill": if s.fill.pattern == gridcraft_engine::model::PatternType::Solid { hex(&s.fill.fg, wb) } else { None },
+        "fill": if s.fill.pattern == PatternType::Solid { hex(&s.fill.fg, wb) } else { None },
         "h": h,
         "v": v,
         "wrap": s.align.wrap,
@@ -127,7 +131,7 @@ impl Hoja {
                 "active": sel.active.a1(),
                 "row": sel.active.row,
                 "col": sel.active.col,
-                "ranges": sel.ranges.iter().map(|r| json!([r.start.row, r.start.col, r.end.row, r.end.col])).collect::<Vec<_>>(),
+                "ranges": sel.ranges.iter().map(rango).collect::<Vec<_>>(),
                 "text": sel.current().a1(),
             },
             "formula": editar,
@@ -135,7 +139,7 @@ impl Hoja {
             "freeze": hoja.and_then(|h| h.freeze),
             "defaultColW": hoja.map(|h| h.default_col_width),
             "defaultRowH": hoja.map(|h| h.default_row_height),
-            "merges": hoja.map(|h| h.merges.iter().map(|r| json!([r.start.row, r.start.col, r.end.row, r.end.col])).collect::<Vec<_>>()),
+            "merges": hoja.map(|h| h.merges.iter().map(rango).collect::<Vec<_>>()),
             "style": hoja.map(|h| estilo(wb, h.style_id(sel.active))),
         })
         .to_string()
@@ -173,26 +177,31 @@ impl Hoja {
         json!({"cells": celdas, "styles": estilos}).to_string()
     }
 
+    /// Lo que `medir` saca de la hoja activa, o `por_omision` si no hay libro o hoja.
+    fn en_hoja<T>(&self, por_omision: T, medir: impl FnOnce(&Sheet) -> T) -> T {
+        self.sesion.doc().ok().and_then(|d| d.wb.active().map(medir)).unwrap_or(por_omision)
+    }
+
     /// El ancho de la columna y el alto de la fila (0 si están ocultas).
     pub fn col_width(&self, col: u32) -> f32 {
-        self.sesion.doc().ok().and_then(|d| d.wb.active().map(|h| h.col_width(col))).unwrap_or(0.0)
+        self.en_hoja(0.0, |h| h.col_width(col))
     }
     pub fn row_height(&self, fila: u32) -> f32 {
-        self.sesion.doc().ok().and_then(|d| d.wb.active().map(|h| h.row_height(fila))).unwrap_or(0.0)
+        self.en_hoja(0.0, |h| h.row_height(fila))
     }
     /// Dónde empieza la columna o la fila, contando desde el borde de la hoja.
     pub fn col_left(&self, col: u32) -> f64 {
-        self.sesion.doc().ok().and_then(|d| d.wb.active().map(|h| h.col_left(col))).unwrap_or(0.0)
+        self.en_hoja(0.0, |h| h.col_left(col))
     }
     pub fn row_top(&self, fila: u32) -> f64 {
-        self.sesion.doc().ok().and_then(|d| d.wb.active().map(|h| h.row_top(fila))).unwrap_or(0.0)
+        self.en_hoja(0.0, |h| h.row_top(fila))
     }
     /// La columna o la fila que está en esa distancia del borde de la hoja.
     pub fn col_at(&self, x: f64) -> u32 {
-        self.sesion.doc().ok().and_then(|d| d.wb.active().map(|h| h.col_at(x))).unwrap_or(0)
+        self.en_hoja(0, |h| h.col_at(x))
     }
     pub fn row_at(&self, y: f64) -> u32 {
-        self.sesion.doc().ok().and_then(|d| d.wb.active().map(|h| h.row_at(y))).unwrap_or(0)
+        self.en_hoja(0, |h| h.row_at(y))
     }
 
     /// Cuántas filas y columnas tiene la hoja como máximo (para el tamaño de la barra de desplazamiento).
